@@ -1,6 +1,10 @@
 # AcuCheck — como obter o APK e o EXE
 
-O projeto inclui a interface, a escolha de áudio local, os limites de reprodução e dois workflows que compilam os arquivos nos ambientes adequados: Windows para o `.exe` e Android SDK para o `.apk`.
+O projeto inclui a interface da pegadinha e dois workflows que compilam os arquivos nos ambientes adequados: Windows para o `.exe` e Android SDK para o `.apk`.
+
+## 0. Coloque seu áudio meme
+
+Copie o arquivo para `web/audio/meme.mp3` antes de enviar ao GitHub. Sem ele, o app usa um som sintético estourado.
 
 ## 1. Enviar o projeto ao GitHub (a partir do Pop!_OS)
 
@@ -42,6 +46,6 @@ Os workflows compilam no Windows e num runner com Android SDK/JDK, respectivamen
 - Windows: teste o `.exe` no seu próprio computador antes de compartilhar. O SmartScreen pode mostrar aviso de reputação para apps novos sem assinatura digital.
 - Android: o APK de debug é para instalação manual/testes. O Android pode pedir autorização para instalar apps vindos do navegador/gerenciador de arquivos. Os amigos só devem instalar se souberem que o arquivo é seu e confiarem nele.
 
-## Limites do som
+## Como funciona
 
-O aplicativo nunca altera o volume global do sistema, nunca toca automaticamente e não inicia em segundo plano. Só reproduz após clique explícito, permite escolher arquivo de áudio local (até 25 MB), toca por no máximo 2,5 segundos e limita o ganho interno a 20%. O botão **Stop** e a tecla **Esc** param a reprodução.
+Abre com um relatório "sério" → pede para aumentar o volume → botão continuar → contagem 3-2-1 → áudio estourado → tela final. O app não mexe no volume do sistema; **Parar** e **Esc** interrompem o som. Ajustes de intensidade ficam no topo de `web/app.js`.

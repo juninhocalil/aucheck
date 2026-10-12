@@ -1,0 +1,4 @@
+Coloque aqui o audio meme com o nome:  meme.mp3
+(tambem funciona meme.wav / meme.ogg se voce ajustar a lista AUDIO_CANDIDATES em web/app.js)
+
+Se nenhum arquivo existir, o app usa um som sintetico estourado como padrao.

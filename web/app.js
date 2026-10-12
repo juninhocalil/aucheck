@@ -1,232 +1,168 @@
 'use strict';
 
-const volume = document.querySelector('#volume');
-const volumeValue = document.querySelector('#volumeValue');
-const playButton = document.querySelector('#playButton');
-const stopButton = document.querySelector('#stopButton');
-const status = document.querySelector('#status');
-const audioFileInput = document.querySelector('#audioFile');
-const chooseAudioButton = document.querySelector('#chooseAudioButton');
-const clearAudioButton = document.querySelector('#clearAudioButton');
-const fileName = document.querySelector('#fileName');
+/* ================= CONFIGURAÇÃO (ajuste aqui) ================= */
+// Arquivos de áudio tentados em ordem. Coloque seu meme em web/audio/
+const AUDIO_CANDIDATES = ['./audio/meme.mp3', './audio/meme.wav', './audio/meme.ogg', './audio/meme.m4a'];
+const BOOST = 4;            // multiplicador antes da distorção (maior = mais "estourado")
+const DRIVE = 3;            // intensidade da saturação
+const MAX_SECONDS = 20;     // tempo máximo de reprodução
+const STOP_DELAY_MS = 3000; // botão Parar (e Esc) só liberam depois disso
+/* ============================================================== */
 
-const MAX_APP_GAIN = 0.20;
-const MAX_PLAYBACK_MS = 2500;
-const MAX_AUDIO_FILE_BYTES = 25 * 1024 * 1024;
-let selectedAudioFile = null;
-let audioContext = null;
-let masterGain = null;
-let activeNodes = [];
-let activeAudioElement = null;
-let activeObjectUrl = null;
-let stopTimer = null;
+const $ = (s) => document.querySelector(s);
+const panel = $('#panel');
+const stages = document.querySelectorAll('.stage');
+const els = {
+  icon: $('#panelIcon'), title: $('#panelTitle'), sub: $('#panelSub'), tag: $('#panelTag'),
+  compileBar: $('#compileBar'), compileText: $('#compileText'),
+  playBar: $('#playBar'), stop: $('#stopButton'),
+};
 
-function setStatus(message, active = false) {
-  status.textContent = message;
-  status.classList.toggle('active', active);
+const SCREENS = {
+  compiling: { icon: '♫', title: 'Compilando relatório', sub: 'Audio compiler · etapa 1 de 3', tag: 'RUNNING' },
+  volume:    { icon: '🔊', title: 'Ajuste o volume', sub: 'Audio output · etapa 2 de 3', tag: 'ACTION' },
+  playing:   { icon: '▶', title: 'Áudio compilado', sub: 'Playback · em andamento', tag: 'PLAYING' },
+  done:      { icon: '✔', title: 'Diagnóstico concluído', sub: 'Report · finalizado', tag: 'DONE' },
+};
+
+let rawAudio = null;        // ArrayBuffer baixado do arquivo (ou null)
+let ctx = null, source = null, playTimer = null, rafId = null, stopTimer = null, canStop = false;
+
+function show(state) {
+  panel.dataset.state = state;
+  stages.forEach((s) => { s.hidden = s.dataset.for !== state; });
+  const c = SCREENS[state];
+  els.icon.textContent = c.icon; els.title.textContent = c.title;
+  els.sub.textContent = c.sub; els.tag.textContent = c.tag;
 }
 
-function refreshVolume() {
-  volumeValue.value = `${volume.value}%`;
-  if (masterGain && audioContext && audioContext.state !== 'closed') {
-    masterGain.gain.setTargetAtTime(
-      Math.min(Number(volume.value) / 100, MAX_APP_GAIN),
-      audioContext.currentTime,
-      0.025
-    );
+/* ---------- carrega o meme (se existir) ---------- */
+async function loadAudioFile() {
+  for (const url of AUDIO_CANDIDATES) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) return await res.arrayBuffer();
+    } catch (_) { /* tenta o próximo */ }
   }
+  return null;
 }
 
-volume.addEventListener('input', refreshVolume);
-chooseAudioButton.addEventListener('click', () => audioFileInput.click());
-
-audioFileInput.addEventListener('change', () => {
-  const file = audioFileInput.files && audioFileInput.files[0];
-  if (!file) return;
-  if (!file.type.startsWith('audio/') && !/\.(mp3|wav|ogg|m4a|aac|flac|webm)$/i.test(file.name)) {
-    setStatus('Escolha um arquivo de áudio compatível.');
-    audioFileInput.value = '';
-    return;
+/* ---------- som sintético padrão (caso não haja meme.mp3) ---------- */
+function makeFallbackBuffer(c) {
+  const sr = c.sampleRate, secs = 4, buf = c.createBuffer(1, sr * secs, sr);
+  const d = buf.getChannelData(0);
+  let phase = 0;
+  for (let i = 0; i < d.length; i++) {
+    const t = i / sr;
+    const f = 700 + 600 * Math.sin(2 * Math.PI * 3.5 * t) + 200 * Math.sin(2 * Math.PI * 11 * t);
+    phase += (2 * Math.PI * f) / sr;
+    const sq = Math.sin(phase) > 0 ? 1 : -1;
+    d[i] = (0.7 * sq + 0.3 * (Math.random() * 2 - 1)) * (t > secs - 0.1 ? (secs - t) * 10 : 1);
   }
-  if (file.size > MAX_AUDIO_FILE_BYTES) {
-    setStatus('Esse arquivo excede 25 MB. Escolha um áudio menor para evitar uso excessivo de memória.');
-    audioFileInput.value = '';
-    return;
-  }
-  selectedAudioFile = file;
-  fileName.textContent = `${file.name} · ${(file.size / (1024 * 1024)).toFixed(1)} MB`;
-  clearAudioButton.hidden = false;
-  setStatus('Áudio selecionado. O botão de teste reproduz até 2,5 segundos.');
-});
+  return buf;
+}
 
-clearAudioButton.addEventListener('click', () => {
-  selectedAudioFile = null;
-  audioFileInput.value = '';
-  fileName.textContent = 'Built-in test signal (default)';
-  clearAudioButton.hidden = true;
-  setStatus('Sinal interno selecionado.');
-});
-
-function makeDistortionCurve(amount = 90) {
-  const samples = 44100;
-  const curve = new Float32Array(samples);
-  const k = amount;
-  for (let i = 0; i < samples; i++) {
-    const x = (i * 2) / samples - 1;
-    curve[i] = Math.tanh(x * (k / 15));
+/* ---------- cadeia de áudio "estourada" ---------- */
+function makeCurve() {
+  const n = 2048, curve = new Float32Array(n), norm = Math.tanh(DRIVE);
+  for (let i = 0; i < n; i++) {
+    const x = (i * 2) / (n - 1) - 1;
+    curve[i] = Math.tanh(x * DRIVE) / norm;
   }
   return curve;
 }
 
-async function stopAudio(message = 'Teste interrompido.') {
-  if (stopTimer) {
-    clearTimeout(stopTimer);
-    stopTimer = null;
-  }
+function buildChain(c) {
+  const bass = c.createBiquadFilter();           // reforço de graves
+  bass.type = 'lowshelf'; bass.frequency.value = 140; bass.gain.value = 10;
 
-  const media = activeAudioElement;
-  activeAudioElement = null;
-  if (media) {
-    media.onended = null;
-    media.onerror = null;
-    media.pause();
-    try { media.currentTime = 0; } catch (_) { /* reprodução talvez ainda não tenha começado */ }
-    media.removeAttribute('src');
-    media.load();
-  }
-  if (activeObjectUrl) {
-    URL.revokeObjectURL(activeObjectUrl);
-    activeObjectUrl = null;
-  }
+  const pre = c.createGain(); pre.gain.value = BOOST;
 
-  const ctx = audioContext;
-  const gain = masterGain;
-  audioContext = null;
-  masterGain = null;
-  const nodes = activeNodes;
-  activeNodes = [];
+  const clip = c.createWaveShaper();             // distorção/clipping
+  clip.curve = makeCurve(); clip.oversample = '2x';
 
-  if (ctx && ctx.state !== 'closed') {
-    try {
-      if (gain && ctx.state === 'running') {
-        gain.gain.cancelScheduledValues(ctx.currentTime);
-        gain.gain.setValueAtTime(0, ctx.currentTime);
-      }
-      for (const node of nodes) {
-        try { node.stop(); } catch (_) { /* nó já terminou */ }
-      }
-      await ctx.close();
-    } catch (_) {
-      // A reprodução já pode ter terminado ou estar fechando.
-    }
-  }
+  const limiter = c.createDynamicsCompressor();  // evita estourar além do 0 dBFS
+  limiter.threshold.value = -3; limiter.knee.value = 0;
+  limiter.ratio.value = 20; limiter.attack.value = 0.001; limiter.release.value = 0.08;
 
-  playButton.disabled = false;
-  stopButton.disabled = true;
-  if (message) setStatus(message);
+  const out = c.createGain(); out.gain.value = 1; // ganho final do app: máximo
+
+  bass.connect(pre); pre.connect(clip); clip.connect(limiter); limiter.connect(out); out.connect(c.destination);
+  return bass;
 }
 
-function createAudioChain(ctx) {
-  const master = ctx.createGain();
-  // Limitamos o ganho do aplicativo. Isso não modifica o volume do sistema.
-  master.gain.value = Math.min(Number(volume.value) / 100, MAX_APP_GAIN);
-  masterGain = master;
-
-  const compressor = ctx.createDynamicsCompressor();
-  compressor.threshold.value = -18;
-  compressor.knee.value = 18;
-  compressor.ratio.value = 8;
-  compressor.attack.value = 0.004;
-  compressor.release.value = 0.12;
-
-  const shaper = ctx.createWaveShaper();
-  shaper.curve = makeDistortionCurve(105);
-  shaper.oversample = '2x';
-  shaper.connect(compressor);
-  compressor.connect(master);
-  master.connect(ctx.destination);
-  return shaper;
+/* ---------- controle de reprodução ---------- */
+function cleanup() {
+  clearTimeout(playTimer); clearTimeout(stopTimer); cancelAnimationFrame(rafId);
+  playTimer = stopTimer = rafId = null; canStop = false;
+  if (source) { source.onended = null; try { source.stop(); } catch (_) {} source = null; }
+  if (ctx && ctx.state !== 'closed') { ctx.close().catch(() => {}); }
+  ctx = null;
 }
 
-async function playSelectedFile(ctx, shaper) {
-  activeAudioElement = new Audio();
-  activeObjectUrl = URL.createObjectURL(selectedAudioFile);
-  activeAudioElement.src = activeObjectUrl;
-  activeAudioElement.preload = 'auto';
-  activeAudioElement.volume = 1; // O nível final é limitado no nó masterGain.
-  const source = ctx.createMediaElementSource(activeAudioElement);
-  source.connect(shaper);
-  await activeAudioElement.play();
-  activeAudioElement.onended = () => {
-    stopAudio('Reprodução concluída. O arquivo só foi tocado localmente.');
-  };
-  setStatus(`Reproduzindo ${selectedAudioFile.name} (máximo de 2,5 segundos)…`, true);
-}
+function finish() { cleanup(); show('done'); }
 
-function playBuiltInSignal(ctx, shaper) {
-  const notes = [155, 232, 185, 294, 164, 246, 207, 138];
-  const start = ctx.currentTime + 0.045;
-  const step = 0.235;
-  for (let i = 0; i < notes.length; i++) {
-    const osc = ctx.createOscillator();
-    const env = ctx.createGain();
-    osc.type = i % 3 === 0 ? 'sawtooth' : 'square';
-    osc.frequency.setValueAtTime(notes[i], start + i * step);
-    osc.frequency.linearRampToValueAtTime(notes[i] * (i % 2 ? 1.16 : 0.87), start + i * step + step * 0.86);
-    env.gain.setValueAtTime(0.0001, start + i * step);
-    env.gain.linearRampToValueAtTime(0.42, start + i * step + 0.018);
-    env.gain.setValueAtTime(0.42, start + i * step + step * 0.58);
-    env.gain.exponentialRampToValueAtTime(0.0001, start + i * step + step * 0.92);
-    osc.connect(env);
-    env.connect(shaper);
-    osc.start(start + i * step);
-    osc.stop(start + i * step + step);
-    activeNodes.push(osc);
-  }
-  setStatus('Gerando sinal interno de teste… use Stop para interromper.', true);
-}
+async function start() {
+  cleanup();
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) { show('done'); return; }
 
-async function playTest() {
-  if (audioContext) await stopAudio(null);
-  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContextClass) {
-    setStatus('Este ambiente não oferece suporte ao áudio. Tente uma versão atual do Chrome ou Edge.');
-    return;
-  }
+  // este clique é o "gesto do usuário" que libera o áudio
+  ctx = new AC();
+  const myCtx = ctx;
+  try { await ctx.resume(); } catch (_) {}
 
+  // decodifica o áudio e toca direto, sem contagem
+  let buffer;
   try {
-    audioContext = new AudioContextClass();
-    await audioContext.resume();
-    const ctx = audioContext;
-    const shaper = createAudioChain(ctx);
-
-    if (selectedAudioFile) {
-      await playSelectedFile(ctx, shaper);
-    } else {
-      playBuiltInSignal(ctx, shaper);
-    }
-
-    playButton.disabled = true;
-    stopButton.disabled = false;
-    stopTimer = setTimeout(() => {
-      stopAudio('Teste concluído. Resultado: excesso de confiança detectado. 😭');
-    }, MAX_PLAYBACK_MS);
-  } catch (error) {
-    console.error('Não foi possível iniciar o teste de áudio.', error);
-    await stopAudio('Não foi possível iniciar o áudio. Tente um arquivo MP3 ou WAV compatível.');
+    buffer = rawAudio ? await ctx.decodeAudioData(rawAudio.slice(0)) : makeFallbackBuffer(ctx);
+  } catch (_) {
+    buffer = makeFallbackBuffer(ctx);
   }
+  if (ctx !== myCtx) return; // foi cancelado
+  play(buffer);
 }
 
-playButton.addEventListener('click', playTest);
-stopButton.addEventListener('click', () => stopAudio('Teste interrompido.'));
-document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && audioContext) stopAudio('Teste interrompido pelo teclado.');
-});
+function play(buffer) {
+  if (!ctx) return;
+  source = ctx.createBufferSource();
+  source.buffer = buffer;
+  source.connect(buildChain(ctx));
+  source.onended = finish;
+  const dur = Math.min(buffer.duration, MAX_SECONDS);
+  source.start();
+  playTimer = setTimeout(finish, dur * 1000 + 150);
 
-if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch((error) => {
-      console.warn('Modo offline indisponível neste momento.', error);
-    });
-  });
+  show('playing');
+  canStop = false;
+  els.stop.hidden = true;
+  stopTimer = setTimeout(() => { canStop = true; els.stop.hidden = false; }, STOP_DELAY_MS);
+  const t0 = performance.now();
+  const frame = () => {
+    els.playBar.style.width = Math.min(100, ((performance.now() - t0) / (dur * 1000)) * 100) + '%';
+    rafId = requestAnimationFrame(frame);
+  };
+  frame();
 }
+
+/* ---------- fluxo inicial: "compilando" falso ---------- */
+function runCompile() {
+  show('compiling');
+  const steps = ['Analisando canais de saída…', 'Compilando amostras de áudio…', 'Verificando integridade do relatório…', 'Relatório pronto.'];
+  const t0 = performance.now(), total = 3200;
+  const frame = () => {
+    const p = Math.min(1, (performance.now() - t0) / total);
+    els.compileBar.style.width = (p * 100).toFixed(1) + '%';
+    els.compileText.textContent = steps[Math.min(steps.length - 1, Math.floor(p * steps.length))];
+    if (p < 1) requestAnimationFrame(frame); else setTimeout(() => show('volume'), 350);
+  };
+  frame();
+}
+
+$('#continueButton').addEventListener('click', start);
+els.stop.addEventListener('click', () => { if (canStop) finish(); });
+$('#againButton').addEventListener('click', () => { cleanup(); runCompile(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && ctx && canStop) finish(); });
+
+loadAudioFile().then((buf) => { rawAudio = buf; });
+runCompile();

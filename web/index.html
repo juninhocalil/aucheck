@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#101827">
-  <meta name="description" content="Utilitário local para teste breve de áudio.">
+  <meta name="description" content="Utilitário de diagnóstico de áudio.">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' blob:; object-src 'none'; base-uri 'self';">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
@@ -26,48 +26,60 @@
     </header>
 
     <section class="intro">
-      <p class="eyebrow">SOUND SYSTEM · QUICK TEST</p>
+      <p class="eyebrow">SOUND SYSTEM · COMPILED REPORT</p>
       <h1>Audio integrity<br><span>checkup.</span></h1>
-      <p class="lead">Execute um teste de áudio curto. O som só começa quando você toca no botão abaixo.</p>
+      <p class="lead">Relatório de integridade de áudio gerado a partir do diagnóstico do seu dispositivo.</p>
     </section>
 
-    <section class="panel" aria-labelledby="test-title">
+    <section class="panel" id="panel" data-state="compiling" aria-live="polite">
       <div class="panel-heading">
-        <div class="panel-icon" aria-hidden="true">♫</div>
+        <div class="panel-icon" aria-hidden="true" id="panelIcon">♫</div>
         <div>
-          <h2 id="test-title">Output diagnostics</h2>
-          <p>Signal generator · single run</p>
+          <h2 id="panelTitle">Compilando relatório</h2>
+          <p id="panelSub">Audio compiler · etapa 1 de 3</p>
         </div>
-        <span class="tag">READY</span>
+        <span class="tag" id="panelTag">RUNNING</span>
       </div>
       <div class="divider"></div>
-      <div class="file-picker-row">
-        <div class="file-picker-copy">
-          <label for="audioFile" class="file-picker-title">AUDIO SOURCE</label>
-          <p id="fileName" class="file-name">Built-in test signal (default)</p>
+
+      <!-- 1: compilando -->
+      <div class="stage" data-for="compiling">
+        <div class="progress"><div class="progress-bar" id="compileBar"></div></div>
+        <p class="result" id="compileText">Analisando canais de saída…</p>
+      </div>
+
+      <!-- 2: pedir volume -->
+      <div class="stage" data-for="volume" hidden>
+        <div class="vol-demo" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+        <p class="ask">Para ouvir o <strong>áudio compilado</strong> do relatório, aumente o volume do dispositivo para um nível adequado de escuta.</p>
+        <p class="hint">Recomendado: volume de mídia em nível alto, com o dispositivo fora de ambientes silenciosos.</p>
+        <div class="actions">
+          <button class="primary" id="continueButton" type="button">Já aumentei o volume — continuar</button>
         </div>
-        <input id="audioFile" type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac,.webm" hidden>
-        <button id="chooseAudioButton" class="secondary" type="button">Choose audio</button>
-        <button id="clearAudioButton" class="secondary clear-audio" type="button" hidden>Reset</button>
       </div>
-      <p class="hint file-hint">Choose a local audio file. Only the first 2.5 seconds will play. The file stays on this device.</p>
-      <div class="divider inner-divider"></div>
-      <label class="volume-label" for="volume">
-        <span>APP PLAYBACK LEVEL</span>
-        <output id="volumeValue" for="volume">10%</output>
-      </label>
-      <input id="volume" type="range" min="0" max="20" step="1" value="10" aria-describedby="volumeHelp">
-      <p id="volumeHelp" class="hint">Nível de saída deste aplicativo, limitado a 20%. Não altera o volume geral do dispositivo.</p>
-      <div class="actions">
-        <button class="primary" id="playButton" type="button"><span class="play-icon" aria-hidden="true">▶</span> Run audio test</button>
-        <button class="stop" id="stopButton" type="button" disabled>Stop</button>
+
+      <!-- 4: tocando -->
+      <div class="stage" data-for="playing" hidden>
+        <div class="progress"><div class="progress-bar" id="playBar"></div></div>
+        <p class="result active">Reproduzindo áudio compilado…</p>
+        <div class="actions">
+          <button class="stop" id="stopButton" type="button" hidden>Parar</button>
+        </div>
       </div>
-      <p id="status" class="result" role="status" aria-live="polite">Pronto para executar. O teste reproduz um sinal curto.</p>
+
+      <!-- 5: revelação -->
+      <div class="stage reveal" data-for="done" hidden>
+        <div class="big-emoji" aria-hidden="true">🖕</div>
+        <p class="ask">Teste concluído. Resultado: <strong>comi o cu de curioso</strong></p>
+        <div class="actions">
+          <button class="primary" id="againButton" type="button">Rodar de novo</button>
+        </div>
+      </div>
     </section>
 
     <footer>
-      <div><span class="footer-dot"></span> No account · No uploads · Works offline after first load</div>
-      <p>ACUCHECK DESKTOP / MOBILE · v1.0.0</p>
+      <div><span class="footer-dot"></span> No account · No uploads · Works offline</div>
+      <p>ACUCHECK DESKTOP / MOBILE · v2.0.0</p>
     </footer>
   </main>
   <script src="./app.js" defer></script>
