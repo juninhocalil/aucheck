@@ -1,0 +1,9 @@
+{
+  "appId": "com.acucheck.diagnostics",
+  "appName": "AcuCheck Audio Diagnostics",
+  "webDir": "web",
+  "backgroundColor": "#0b1120",
+  "android": {
+    "allowMixedContent": false
+  }
+}

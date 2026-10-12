@@ -1,0 +1,53 @@
+{
+  "name": "acucheck-audio-diagnostics",
+  "version": "1.0.0",
+  "description": "AcuCheck Audio Diagnostics Utility",
+  "author": "AcuCheck",
+  "private": true,
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis portable --x64",
+    "android:add": "cap add android",
+    "android:sync": "cap sync android"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.0.0",
+    "electron": "^37.2.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.acucheck.diagnostics",
+    "productName": "AcuCheck Audio Diagnostics",
+    "directories": {
+      "output": "dist-win"
+    },
+    "files": [
+      "main.cjs",
+      "web/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "icon": "web/icons/icon.ico",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "AcuCheck-${version}-Setup-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "AcuCheck-${version}-Portable-${arch}.${ext}"
+    }
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/core": "^8.0.0"
+  }
+}

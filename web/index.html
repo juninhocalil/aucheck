@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101827">
+  <meta name="description" content="Utilitário local para teste breve de áudio.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' blob:; object-src 'none'; base-uri 'self';">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <link rel="stylesheet" href="./styles.css">
+  <title>AcuCheck | Audio Diagnostics</title>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 40 40" role="img"><path d="M4 21h5l4-10 7 20 6-16 4 6h6"/></svg>
+      </div>
+      <div class="brand-copy">
+        <div class="brand-name">AcuCheck</div>
+        <div class="brand-subtitle">AUDIO DIAGNOSTICS UTILITY</div>
+      </div>
+      <span class="status-pill"><span class="status-dot"></span> LOCAL MODE</span>
+    </header>
+
+    <section class="intro">
+      <p class="eyebrow">SOUND SYSTEM · QUICK TEST</p>
+      <h1>Audio integrity<br><span>checkup.</span></h1>
+      <p class="lead">Execute um teste de áudio curto. O som só começa quando você toca no botão abaixo.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="test-title">
+      <div class="panel-heading">
+        <div class="panel-icon" aria-hidden="true">♫</div>
+        <div>
+          <h2 id="test-title">Output diagnostics</h2>
+          <p>Signal generator · single run</p>
+        </div>
+        <span class="tag">READY</span>
+      </div>
+      <div class="divider"></div>
+      <div class="file-picker-row">
+        <div class="file-picker-copy">
+          <label for="audioFile" class="file-picker-title">AUDIO SOURCE</label>
+          <p id="fileName" class="file-name">Built-in test signal (default)</p>
+        </div>
+        <input id="audioFile" type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac,.webm" hidden>
+        <button id="chooseAudioButton" class="secondary" type="button">Choose audio</button>
+        <button id="clearAudioButton" class="secondary clear-audio" type="button" hidden>Reset</button>
+      </div>
+      <p class="hint file-hint">Choose a local audio file. Only the first 2.5 seconds will play. The file stays on this device.</p>
+      <div class="divider inner-divider"></div>
+      <label class="volume-label" for="volume">
+        <span>APP PLAYBACK LEVEL</span>
+        <output id="volumeValue" for="volume">10%</output>
+      </label>
+      <input id="volume" type="range" min="0" max="20" step="1" value="10" aria-describedby="volumeHelp">
+      <p id="volumeHelp" class="hint">Nível de saída deste aplicativo, limitado a 20%. Não altera o volume geral do dispositivo.</p>
+      <div class="actions">
+        <button class="primary" id="playButton" type="button"><span class="play-icon" aria-hidden="true">▶</span> Run audio test</button>
+        <button class="stop" id="stopButton" type="button" disabled>Stop</button>
+      </div>
+      <p id="status" class="result" role="status" aria-live="polite">Pronto para executar. O teste reproduz um sinal curto.</p>
+    </section>
+
+    <footer>
+      <div><span class="footer-dot"></span> No account · No uploads · Works offline after first load</div>
+      <p>ACUCHECK DESKTOP / MOBILE · v1.0.0</p>
+    </footer>
+  </main>
+  <script src="./app.js" defer></script>
+</body>
+</html>
